@@ -8,6 +8,18 @@ This, with timestamps and how long each state lasted are logged. Logs are saved 
 
 You can configure an optional **--ignore_seconds** value to prevent brief fluctuations from being logged. For example, if the host appears unreachable for only one or two seconds, setting **--ignore_seconds 3** will ignore the temporary change unless it persists for at least 3 seconds. The application also gracefully handles system shutdown, console close, and Ctrl+C events, ensuring that final state information is written before exiting. A shortcut pointing to **start_internet_ping_logger.vbs** can be placed in your windows startup folder to track all internet status when computer is on.
 
+## Note for IP Address to ping
+
+❌ Google ```8.8.8.8```
+
+✔️ Cloudflare (default) ```1.1.1.1``` 
+
+## Requirements
+
+### Requires Python to be installed
+
+https://www.python.org/downloads/
+
 ## Usage
 
 ### Windows

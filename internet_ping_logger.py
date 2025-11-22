@@ -34,7 +34,6 @@ def sec_to_hms(seconds):
 def log_message(host, message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_message = [timestamp, message]
-    print(log_message)
 
     log_path = get_logs_path()
 
@@ -46,13 +45,10 @@ def log_message(host, message):
         f.write(json.dumps(log_message) + "\n")
 
 
-def log_status(host, host_reachable, duration=0):
+def log_status(host, host_status, duration=0):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    status_code = "P" if host_reachable else "F"
-
-    log_message = [timestamp, status_code, sec_to_hms(duration)]
-    print(log_message)
+    log_message = [timestamp, host_status, sec_to_hms(duration)]
 
     saveFileLocation = os.path.join(get_logs_path(), get_file_name(host))
     with open(saveFileLocation, "a") as f:
@@ -89,14 +85,16 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event):
             # Log final state and exit immediately
             curr_seconds_in_state = int(time.perf_counter() - start)
             log_status(host, host_reachable_curr, curr_seconds_in_state)
-            log_message(host, "Closed")
+            log_message(host, "Closed logger")
             icon.stop()
             return
 
         host_reachable_curr = do_ping(host)
         curr_seconds_in_state = int(time.perf_counter() - start)
 
-        icon.title = f"{host_reachable_prev} : {sec_to_hms(curr_seconds_in_state)}"
+        icon.title = (
+            f"Host: {host}\n{host_reachable_prev} : {sec_to_hms(curr_seconds_in_state)}"
+        )
 
         # If status changed from the logged state
         if host_reachable_curr != host_reachable_prev:
@@ -123,7 +121,7 @@ def setup_systray_icon(host, ignore_seconds):
     # Load icon
     iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
     if not os.path.exists(iconPath):
-        print("Error: Icon file not found")
+        log_message(host, "Error: Icon file not found")
         sys.exit()
 
     image = Image.open(iconPath)
@@ -131,18 +129,16 @@ def setup_systray_icon(host, ignore_seconds):
     # Setup state and callbacks
     halt_event = threading.Event()
     logFilePath = os.path.join(get_logs_path(), get_file_name(host))
-    log_message(
-        host, f"Starting logger for '{get_file_name(host)}', ignoring {ignore_seconds}s"
-    )
+    log_message(host, f"Starting logger, ignoring {ignore_seconds}s")
 
     def after_click(icon, query):
         query_str = str(query)
 
         if query_str == "Open Logger Directory":
             os.startfile(get_script_path())
-        elif query_str == "Open Logger File":
+        elif query_str == "Open Log File":
             if not os.path.exists(logFilePath):
-                print("Error: Log file not found")
+                log_message(host, "Error: Log file not found")
                 sys.exit()
             os.startfile(logFilePath)
         elif query_str == "Exit":
@@ -176,7 +172,7 @@ def setup_systray_icon(host, ignore_seconds):
 
         if event in system_events:
             event_name = system_events[event]
-            print(f"[System Event] {event_name} - stopping logger")
+            log_message(host, f"[System Event] {event_name} - stopping logger")
             halt_event.set()
             time.sleep(2)  # Give thread ~2 seconds to log and exit
             # Return True to indicate we handled the event
@@ -207,7 +203,9 @@ if __name__ == "__main__":
         prog="Internet Connectivity Tester",
         description="Track internet connectivity for a given hostname with 1 second accuracy.",
     )
-    parser.add_argument("--host", help="IP address to ping", type=str)
+    parser.add_argument(
+        "--host", default="1.1.1.1", help="IP address to ping", type=str
+    )
     parser.add_argument(
         "--ignore_seconds",
         default=0,
