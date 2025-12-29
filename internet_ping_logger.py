@@ -117,6 +117,12 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event):
         time.sleep(1)
 
 
+class Options:
+    OPEN_DIR = "Open Logger Directory"
+    OPEN_FILE = "Open Logger File"
+    EXIT = "Exit"
+
+
 def setup_systray_icon(host, ignore_seconds):
     # Load icon
     iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
@@ -133,16 +139,16 @@ def setup_systray_icon(host, ignore_seconds):
 
     def after_click(icon, query):
         query_str = str(query)
-
-        if query_str == "Open Logger Directory":
-            os.startfile(get_script_path())
-        elif query_str == "Open Log File":
-            if not os.path.exists(logFilePath):
-                log_message(host, "Error: Log file not found")
-                sys.exit()
-            os.startfile(logFilePath)
-        elif query_str == "Exit":
-            halt_event.set()
+        match query_str:
+            case Options.OPEN_DIR:
+                os.startfile(get_script_path())
+            case Options.OPEN_FILE:
+                if not os.path.exists(logFilePath):
+                    log_message(host, "Error: Log file not found")
+                    sys.exit()
+                os.startfile(logFilePath)
+            case Options.EXIT:
+                halt_event.set()
 
     # Create icon with menu
     icon = pystray.Icon(
@@ -150,9 +156,9 @@ def setup_systray_icon(host, ignore_seconds):
         image,
         "Booting InternetPingLogger",
         menu=pystray.Menu(
-            pystray.MenuItem("Open Logger Directory", after_click),
-            pystray.MenuItem("Open Logger File", after_click),
-            pystray.MenuItem("Exit", after_click),
+            pystray.MenuItem(Options.OPEN_DIR, after_click),
+            pystray.MenuItem(Options.OPEN_FILE, after_click),
+            pystray.MenuItem(Options.EXIT, after_click),
         ),
     )
 
