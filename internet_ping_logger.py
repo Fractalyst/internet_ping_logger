@@ -1,6 +1,4 @@
 import os
-import platform
-import subprocess
 import threading
 import time
 from datetime import datetime
@@ -12,7 +10,19 @@ from PIL import Image
 import time
 import win32api
 import win32con
-import json
+import socket
+from enum import StrEnum
+
+
+class Status(StrEnum):
+    Online = "Online"
+    Timeout = "Timeout"
+    Refused = "Refused"
+    NetworkError = "Network Error"
+    NoRoute = "No Route"
+
+    Started = "Started Log"
+    Stopped = "Stopped Log"
 
 
 def get_script_path():
@@ -20,7 +30,10 @@ def get_script_path():
 
 
 def get_logs_path():
-    return os.path.join(get_script_path(), "logs")
+    log_path = os.path.join(get_script_path(), "logs")
+    if not os.path.exists(log_path):
+        os.mkdir(log_path)
+    return log_path
 
 
 def get_file_name(host):
@@ -31,88 +44,79 @@ def sec_to_hms(seconds):
     return time.strftime("%H:%M:%S", time.gmtime(int(seconds)))
 
 
-def log_message(host, message):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_message = [timestamp, message]
-
-    log_path = get_logs_path()
-
-    if not os.path.exists(log_path):
-        os.mkdir(log_path)
-
-    saveFileLocation = os.path.join(log_path, get_file_name(host))
-    with open(saveFileLocation, "a") as f:
-        f.write(json.dumps(log_message) + "\n")
+def pad_end(string, pad):
+    return string + (max(pad - len(string), 0) * " ")
 
 
-def log_status(host, host_status, duration=0):
+def log_status(logFilePath, host_status_prev, duration=-1, host_status_curr="None"):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    log_message = [timestamp, host_status, sec_to_hms(duration)]
+    log_message = pad_end(timestamp, 21)
+    log_message += pad_end(host_status_prev, 15)
+    if duration != -1:
+        log_message += pad_end(sec_to_hms(duration), 9)
+        log_message += "-> "
+        log_message += host_status_curr
 
-    saveFileLocation = os.path.join(get_logs_path(), get_file_name(host))
-    with open(saveFileLocation, "a") as f:
-        f.write(json.dumps(log_message) + "\n")
-
-
-import socket
+    with open(logFilePath, "a") as f:
+        f.write(log_message + "\n")
 
 
 def do_ping(host):
     try:
         with socket.create_connection((host, 443), timeout=2):
-            return "ONLINE"
+            return Status.Online
     except TimeoutError:
-        return "TIMEOUT"
+        return Status.Timeout
     except ConnectionRefusedError:
-        return "REFUSED"
+        return Status.Refused
     except OSError as e:
         if e.errno in (101, 113):
-            return "NO_ROUTE"
-        return "NETWORK_ERROR"
+            return Status.NoRoute
+        return Status.NetworkError
 
 
-def start_ping_loop(icon, host, ignore_seconds, halt_event):
-    host_reachable_curr = "ONLINE"
-    host_reachable_prev = "ONLINE"
-    curr_seconds_in_state = 0
-    state_change_time = None
+def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
+    status_curr = do_ping(host)
+    status_prev = Status.Started
+    curr_state_sec = 0
+    state_diff_sec = None
 
     start = time.perf_counter()
+
+    log_status(logFilePath, status_prev, curr_state_sec, status_curr)
+    status_prev = status_curr
 
     while True:
         if halt_event.is_set():
             # Log final state and exit immediately
-            curr_seconds_in_state = int(time.perf_counter() - start)
-            log_status(host, host_reachable_curr, curr_seconds_in_state)
-            log_message(host, "Closed logger")
+            curr_state_sec = int(time.perf_counter() - start)
+            log_status(logFilePath, status_curr, curr_state_sec, Status.Stopped)
             icon.stop()
             return
 
-        host_reachable_curr = do_ping(host)
-        curr_seconds_in_state = int(time.perf_counter() - start)
+        status_curr = do_ping(host)
+        curr_state_sec = int(time.perf_counter() - start)
 
-        icon.title = (
-            f"Host: {host}\n{host_reachable_prev} : {sec_to_hms(curr_seconds_in_state)}"
-        )
+        icon.title = f"Host: {host}\n{status_prev} : {sec_to_hms(curr_state_sec)}"
 
         # If status changed from the logged state
-        if host_reachable_curr != host_reachable_prev:
+        if status_curr != status_prev:
             # First time detecting this change
-            if state_change_time is None:
-                state_change_time = time.perf_counter()
+            if state_diff_sec is None:
+                state_diff_sec = time.perf_counter()
 
             # Check if enough time has passed to confirm the change
-            time_elapsed = time.perf_counter() - state_change_time
+            time_elapsed = time.perf_counter() - state_diff_sec
             if time_elapsed >= ignore_seconds:
-                curr_seconds_in_state = int(time.perf_counter() - start)
-                log_status(host, host_reachable_prev, curr_seconds_in_state)
-                host_reachable_prev = host_reachable_curr
+                curr_state_sec = int(time.perf_counter() - start)
+                log_status(logFilePath, status_prev, curr_state_sec, status_curr)
+                status_prev = status_curr
                 start = time.perf_counter()
-                state_change_time = None
+                state_diff_sec = None
         else:
             # Status returned to the logged state, reset the change timer
-            state_change_time = None
+            state_diff_sec = None
 
         time.sleep(1)
 
@@ -126,16 +130,16 @@ class Options:
 def setup_systray_icon(host, ignore_seconds):
     # Load icon
     iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
+    logFilePath = os.path.join(get_logs_path(), get_file_name(host))
     if not os.path.exists(iconPath):
-        log_message(host, "Error: Icon file not found")
+        log_status(logFilePath, "Error: Icon file not found")
         sys.exit()
 
     image = Image.open(iconPath)
 
     # Setup state and callbacks
     halt_event = threading.Event()
-    logFilePath = os.path.join(get_logs_path(), get_file_name(host))
-    log_message(host, f"Starting logger, ignoring {ignore_seconds}s")
+    log_status(logFilePath, f"Running. Ignoring {ignore_seconds}s")
 
     def after_click(icon, query):
         query_str = str(query)
@@ -144,7 +148,7 @@ def setup_systray_icon(host, ignore_seconds):
                 os.startfile(get_script_path())
             case Options.OPEN_FILE:
                 if not os.path.exists(logFilePath):
-                    log_message(host, "Error: Log file not found")
+                    log_status(logFilePath, "Error: Log file not found")
                     sys.exit()
                 os.startfile(logFilePath)
             case Options.EXIT:
@@ -178,7 +182,9 @@ def setup_systray_icon(host, ignore_seconds):
 
         if event in system_events:
             event_name = system_events[event]
-            log_message(host, f"[System Event] {event_name} - stopping logger")
+            log_status(
+                logFilePath, f"[System Event] {event_name} - {str(Status.Stopped)}"
+            )
             halt_event.set()
             time.sleep(2)  # Give thread ~2 seconds to log and exit
             # Return True to indicate we handled the event
@@ -191,7 +197,7 @@ def setup_systray_icon(host, ignore_seconds):
     def setup_thread(icon):
         ping_thread = threading.Thread(
             target=start_ping_loop,
-            args=(icon, host, ignore_seconds, halt_event),
+            args=(icon, host, ignore_seconds, halt_event, logFilePath),
             daemon=False,
         )
         ping_thread.start()
