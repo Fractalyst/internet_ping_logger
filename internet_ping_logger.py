@@ -29,15 +29,11 @@ def get_script_path():
     return os.path.dirname(__file__)
 
 
-def get_logs_path():
+def get_log_file_path(host):
     log_path = os.path.join(get_script_path(), "logs")
     if not os.path.exists(log_path):
         os.mkdir(log_path)
-    return log_path
-
-
-def get_file_name(host):
-    return f"log_{host}.txt"
+    return os.path.join(log_path, f"log_{host}.txt")
 
 
 def sec_to_hms(seconds):
@@ -130,7 +126,7 @@ class Options:
 def setup_systray_icon(host, ignore_seconds):
     # Load icon
     iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
-    logFilePath = os.path.join(get_logs_path(), get_file_name(host))
+    logFilePath = get_log_file_path(host)
     if not os.path.exists(iconPath):
         log_status(logFilePath, "Error: Icon file not found")
         sys.exit()
