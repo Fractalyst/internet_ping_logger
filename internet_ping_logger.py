@@ -8,8 +8,6 @@ import argparse
 import pystray
 from PIL import Image
 import time
-import win32api
-import win32con
 import socket
 from enum import StrEnum
 
@@ -117,12 +115,6 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
         time.sleep(1)
 
 
-class Options:
-    OPEN_DIR = "Open Logger Directory"
-    OPEN_FILE = "Open Logger File"
-    EXIT = "Exit"
-
-
 def setup_systray_icon(host, ignore_seconds):
     # Load icon
     iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
@@ -131,63 +123,36 @@ def setup_systray_icon(host, ignore_seconds):
         log_status(logFilePath, "Error: Icon file not found")
         sys.exit()
 
-    image = Image.open(iconPath)
-
     # Setup state and callbacks
     halt_event = threading.Event()
     log_status(logFilePath, f"Running. Ignoring {ignore_seconds}s")
 
-    def after_click(icon, query):
-        query_str = str(query)
-        match query_str:
-            case Options.OPEN_DIR:
-                os.startfile(get_script_path())
-            case Options.OPEN_FILE:
-                if not os.path.exists(logFilePath):
-                    log_status(logFilePath, "Error: Log file not found")
-                    sys.exit()
-                os.startfile(logFilePath)
-            case Options.EXIT:
-                halt_event.set()
+    def menu_open_dir():
+        os.startfile(get_script_path())
+
+    def menu_open_file():
+        if not os.path.exists(logFilePath):
+            log_status(logFilePath, "Error: Log file not found")
+            sys.exit()
+        os.startfile(logFilePath)
+
+    def menu_exit():
+        halt_event.set()
 
     # Create icon with menu
     icon = pystray.Icon(
         "InternetPingLogger",
-        image,
+        Image.open(iconPath),
         "Booting InternetPingLogger",
         menu=pystray.Menu(
-            pystray.MenuItem(Options.OPEN_DIR, after_click),
-            pystray.MenuItem(Options.OPEN_FILE, after_click),
-            pystray.MenuItem(Options.EXIT, after_click),
+            pystray.MenuItem("Open Logger Directory", menu_open_dir),
+            pystray.MenuItem("Open Logger File", menu_open_file),
+            pystray.MenuItem("Exit", menu_exit),
         ),
     )
 
     # Handle system shutdown/logoff events
-    def on_system_event(event):
-        """
-        Gracefully handle system events like shutdown, restart, logoff, and console close.
-        Ensures the logger is cleanly terminated before the OS closes the process.
-        """
-        system_events = {
-            win32con.CTRL_C_EVENT: "Ctrl+C",
-            win32con.CTRL_BREAK_EVENT: "Ctrl+Break",
-            win32con.CTRL_CLOSE_EVENT: "Console window close",
-            win32con.CTRL_LOGOFF_EVENT: "User logoff",
-            win32con.CTRL_SHUTDOWN_EVENT: "System shutdown",
-        }
-
-        if event in system_events:
-            event_name = system_events[event]
-            log_status(
-                logFilePath, f"[System Event] {event_name} - {str(Status.Stopped)}"
-            )
-            halt_event.set()
-            time.sleep(2)  # Give thread ~2 seconds to log and exit
-            # Return True to indicate we handled the event
-            return True
-
-        # For any other events, let the system handle them
-        return False
+    # Tried signal.signal, atexit, python doesn't receive signals from windows for proper shutdown
 
     # Setup ping thread
     def setup_thread(icon):
@@ -199,11 +164,7 @@ def setup_systray_icon(host, ignore_seconds):
         ping_thread.start()
         icon.visible = True
 
-    win32api.SetConsoleCtrlHandler(on_system_event, True)
-    try:
-        icon.run(setup_thread)
-    finally:
-        win32api.SetConsoleCtrlHandler(on_system_event, False)
+    icon.run(setup_thread)
 
 
 if __name__ == "__main__":
