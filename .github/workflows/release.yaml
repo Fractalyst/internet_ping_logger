@@ -16,15 +16,19 @@ jobs:
         uses: actions/checkout@v6
 
       # Create the release and upload only specific files
+      - name: Create release zip
+        run: |
+          zip -r Internet_ping_logger.zip \
+            tray_icons_png/internet_good.png \
+            tray_icons_png/internet_warning.png \
+            tray_icons_png/internet_none.png \
+            internet_ping_logger.py \
+            readme.md \
+            start_internet_ping_logger.vbs
+
       - name: Release Zip File
         uses: softprops/action-gh-release@v2.5.0
         with:
-          files: |
-            tray_icons_png/internet_good.png
-            tray_icons_png/internet_warning.png
-            tray_icons_png/internet_none.png
-            internet_ping_logger.py
-            readme.md
-            start_internet_ping_logger.vbs
+          files: Internet_ping_logger.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
