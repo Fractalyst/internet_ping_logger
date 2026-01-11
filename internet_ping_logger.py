@@ -15,12 +15,17 @@ from enum import StrEnum
 
 class Status(StrEnum):
     # Max string length for log_status = 18
+    # Online
     Online = "Online"
+
+    # Network errors
     Timeout = "Timeout"
     Refused = "Refused"
-    NoRoute = "No Route"
     Aborted = "Aborted"
     Reset = "Reset"
+
+    # Operating system errors
+    NoRoute = "No Route"
     Unreachable = "Net Unreachable"
 
     Started = "Started Log"

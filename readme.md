@@ -4,7 +4,7 @@
 
 **InternetPingLogger** is a small Windows tray application that monitors the reachability of a given IP address by attempting a TCP connection on port 443 once per second. It logs all connectivity state changes:
 
-**ONLINE**, **TIMEOUT**, **REFUSED**, **NO_ROUTE**, **NETWORK_ERROR** 
+**Online**, **Timeout**, **Refused**, **Abored**, **Reset**, **No Route** , **Net Unreachable** 
 
 This, with timestamps and how long each state lasted are logged. Logs are saved as JSON-line array entries inside a file named **log_X.X.X.X.txt** in the script directory in **logs\\** folder. A system tray icon displays the current state duration and provides quick actions such as opening the log file, opening the log directory, or exiting the application.
 
@@ -14,7 +14,7 @@ You can configure an optional **--ignore_seconds** value to prevent brief fluctu
 
 ❌ Google ```8.8.8.8```
 
-✔️ Cloudflare (default) ```1.1.1.1``` 
+✔️ Cloudflare (default) ```1.1.1.1```
 
 ## Requirements
 
