@@ -1,4 +1,5 @@
 import os
+import errno
 import threading
 import time
 from datetime import datetime
@@ -13,11 +14,14 @@ from enum import StrEnum
 
 
 class Status(StrEnum):
+    # Max string length for log_status = 18
     Online = "Online"
     Timeout = "Timeout"
     Refused = "Refused"
-    NetworkError = "Network Error"
     NoRoute = "No Route"
+    Aborted = "Aborted"
+    Reset = "Reset"
+    Unreachable = "Net Unreachable"
 
     Started = "Started Log"
     Stopped = "Stopped Log"
@@ -38,22 +42,28 @@ def sec_to_hms(seconds):
     return time.strftime("%H:%M:%S", time.gmtime(int(seconds)))
 
 
-def pad_end(string, pad):
-    return string + (max(pad - len(string), 0) * " ")
-
-
-def log_status(logFilePath, host_status_prev, duration=-1, host_status_curr="None"):
+def log_status(
+    log_file_path: str,
+    prev_status: str,
+    duration: int | None = None,
+    curr_status: str | None = None,
+):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    log_message = pad_end(timestamp, 21)
-    log_message += pad_end(host_status_prev, 15)
-    if duration != -1:
-        log_message += pad_end(sec_to_hms(duration), 9)
-        log_message += "-> "
-        log_message += host_status_curr
+    parts = [timestamp]
 
-    with open(logFilePath, "a") as f:
-        f.write(log_message + "\n")
+    if duration is not None:
+        parts.append(sec_to_hms(duration))
+
+    if curr_status is not None:
+        parts.append(prev_status.rjust(18))
+        parts.append("->")
+        parts.append(curr_status)
+    else:
+        parts.append(prev_status)
+
+    with open(log_file_path, "a", encoding="utf-8") as f:
+        f.write("  ".join(parts) + "\n")
 
 
 def do_ping(host):
@@ -64,10 +74,17 @@ def do_ping(host):
         return Status.Timeout
     except ConnectionRefusedError:
         return Status.Refused
+    except ConnectionAbortedError:
+        return Status.Aborted
+    except ConnectionResetError:
+        return Status.Reset
     except OSError as e:
         if e.errno in (101, 113):
             return Status.NoRoute
-        return Status.NetworkError
+        if e.errno == errno.ENETUNREACH:  # if e.errno == 10065:
+            return Status.Unreachable
+        # Errors to account for should they not be handled
+        return f"E {e.errno}:{e.strerror}"
 
 
 def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
@@ -75,6 +92,7 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
     status_prev = Status.Started
     curr_state_sec = 0
     state_diff_sec = None
+    time_elapsed = 0
 
     start = time.perf_counter()
 
