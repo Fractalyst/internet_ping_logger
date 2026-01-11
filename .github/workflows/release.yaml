@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'  # Trigger on version tags like v1.0.0
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -23,3 +26,5 @@ jobs:
             internet_ping_logger.py
             readme.md
             start_internet_ping_logger.vbs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
