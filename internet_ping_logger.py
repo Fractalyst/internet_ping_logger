@@ -42,72 +42,59 @@ def sec_to_hms(seconds):
     return time.strftime("%H:%M:%S", time.gmtime(int(seconds)))
 
 
-def log_status(
-    log_file_path: str,
-    prev_status: str,
-    duration: int | None = None,
-    curr_status: str | None = None,
-):
+def log_new_status(log_file_path: str, curr_status: str, duration: int | None = None):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    part_duration = ""
+    if duration:
+        part_duration = "   " + sec_to_hms(duration)
 
-    parts = [timestamp]
-
-    if duration is not None:
-        parts.append(sec_to_hms(duration))
-
-    if curr_status is not None:
-        parts.append(prev_status.rjust(18))
-        parts.append("->")
-        parts.append(curr_status)
-    else:
-        parts.append(prev_status)
+    part_curr_status = [timestamp, curr_status.rjust(18)]
 
     with open(log_file_path, "a", encoding="utf-8") as f:
-        f.write("  ".join(parts) + "\n")
+        f.write(part_duration + "\n" + "   ".join(part_curr_status))
 
 
-def do_ping(host):
+def do_ping(host) -> tuple[str, int]:
     try:
         with socket.create_connection((host, 443), timeout=2):
-            return Status.Online
+            return (Status.Online, 0)
     except TimeoutError:
-        return Status.Timeout
+        return (Status.Timeout, 1)
     except ConnectionRefusedError:
-        return Status.Refused
+        return (Status.Refused, 1)
     except ConnectionAbortedError:
-        return Status.Aborted
+        return (Status.Aborted, 1)
     except ConnectionResetError:
-        return Status.Reset
+        return (Status.Reset, 1)
     except OSError as e:
         if e.errno in (101, 113):
-            return Status.NoRoute
+            return (Status.NoRoute, 2)
         if e.errno == errno.ENETUNREACH:  # if e.errno == 10065:
-            return Status.Unreachable
+            return (Status.Unreachable, 2)
         # Errors to account for should they not be handled
-        return f"E {e.errno}:{e.strerror}"
+        return (f"E {e.errno}:{e.strerror}", 2)
 
 
-def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
-    status_curr = do_ping(host)
-    status_prev = Status.Started
+def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath, images):
+    status_curr, status_image_index = do_ping(host)
+    status_prev = status_curr
     curr_state_sec = 0
     state_diff_sec = None
     time_elapsed = 0
 
     start = time.perf_counter()
 
-    log_status(logFilePath, status_prev, curr_state_sec, status_curr)
-    status_prev = status_curr
+    log_new_status(logFilePath, status_curr)
 
     while True:
         if halt_event.is_set():
             # Log final state and exit immediately
             curr_state_sec = int(time.perf_counter() - start)
-            log_status(logFilePath, status_curr, curr_state_sec, Status.Stopped)
+            log_new_status(logFilePath, Status.Stopped, curr_state_sec)
             icon.stop()
             return
 
-        status_curr = do_ping(host)
+        status_curr, status_image_index = do_ping(host)
         curr_state_sec = int(time.perf_counter() - start)
 
         icon.title = f"Host: {host}\n{status_prev} : {sec_to_hms(curr_state_sec)}"
@@ -121,8 +108,9 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
             # Check if enough time has passed to confirm the change
             time_elapsed = time.perf_counter() - state_diff_sec
             if time_elapsed >= ignore_seconds:
+                icon.icon = images[status_image_index]
                 curr_state_sec = int(time.perf_counter() - start)
-                log_status(logFilePath, status_prev, curr_state_sec, status_curr)
+                log_new_status(logFilePath, status_curr, curr_state_sec)
                 status_prev = status_curr
                 start = time.perf_counter()
                 state_diff_sec = None
@@ -135,22 +123,30 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath):
 
 def setup_systray_icon(host, ignore_seconds):
     # Load icon
-    iconPath = os.path.join(get_script_path(), "globe-svgrepo-com.png")
+    iconPath = os.path.join(get_script_path(), "tray_icons_png")
+    icons = [
+        "internet_good.png",
+        "internet_warning.png",
+        "internet_none.png",
+    ]
     logFilePath = get_log_file_path(host)
-    if not os.path.exists(iconPath):
-        log_status(logFilePath, "Error: Icon file not found")
-        sys.exit()
 
+    for icon in icons:
+        if not os.path.exists(os.path.join(iconPath, icon)):
+            log_new_status(logFilePath, f"Error: Icon file not found {icon}")
+            sys.exit()
+
+    images = [Image.open(os.path.join(iconPath, icon)) for icon in icons]
     # Setup state and callbacks
     halt_event = threading.Event()
-    log_status(logFilePath, f"Running. Ignoring {ignore_seconds}s")
+    log_new_status(logFilePath, f"Init ignoring: {ignore_seconds}s")
 
     def menu_open_dir():
         os.startfile(get_script_path())
 
     def menu_open_file():
         if not os.path.exists(logFilePath):
-            log_status(logFilePath, "Error: Log file not found")
+            log_new_status(logFilePath, "Error: Log file not found")
             sys.exit()
         os.startfile(logFilePath)
 
@@ -159,8 +155,8 @@ def setup_systray_icon(host, ignore_seconds):
 
     # Create icon with menu
     icon = pystray.Icon(
-        "InternetPingLogger",
-        Image.open(iconPath),
+        "Python Internet Ping Logger",
+        images[0],
         "Booting InternetPingLogger",
         menu=pystray.Menu(
             pystray.MenuItem("Open Logger Directory", menu_open_dir),
@@ -176,7 +172,7 @@ def setup_systray_icon(host, ignore_seconds):
     def setup_thread(icon):
         ping_thread = threading.Thread(
             target=start_ping_loop,
-            args=(icon, host, ignore_seconds, halt_event, logFilePath),
+            args=(icon, host, ignore_seconds, halt_event, logFilePath, images),
             daemon=False,
         )
         ping_thread.start()
@@ -195,7 +191,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--ignore_seconds",
-        default=0,
+        default=2,
         help="Seconds to wait before confirming a connection state change (0-60)",
         type=int,
     )

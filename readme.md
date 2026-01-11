@@ -36,10 +36,10 @@ Run the script from the command line:
 
 --host (required) — IPv4 address to monitor.
 
---ignore_seconds (optional, default 0) — Seconds a state change must persist before it is logged (0–60).
+--ignore_seconds (optional, default 2s) — Seconds a state change must persist before it is logged (0–60).
 
 Example:
 
-```python internet_ping_logger.py --host 8.8.8.8 --ignore_seconds 3```
+```python internet_ping_logger.py --host 1.1.1.1 --ignore_seconds 3```
 
-This launches the tray application, begins logging state changes, and generates logs\log_8.8.8.8.txt.
+This launches the tray application, begins logging state changes, and generates logs\log_1.1.1.1.txt.
