@@ -14,10 +14,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Set up GitHub CLI (optional if you want more control over release)
-      - name: Set up GitHub CLI
-        uses: cli/gh-action@v3
-
       # Create the release and upload only specific files
       - name: GH Release
         uses: softprops/action-gh-release@v2.5.0
