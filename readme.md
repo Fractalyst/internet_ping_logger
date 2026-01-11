@@ -1,5 +1,7 @@
 # InternetPingLogger
 
+## Version 1.0
+
 **InternetPingLogger** is a small Windows tray application that monitors the reachability of a given IP address by attempting a TCP connection on port 443 once per second. It logs all connectivity state changes:
 
 **ONLINE**, **TIMEOUT**, **REFUSED**, **NO_ROUTE**, **NETWORK_ERROR** 
