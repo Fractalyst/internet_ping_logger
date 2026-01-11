@@ -1,4 +1,4 @@
-name: Release Files
+name: Release Files in Zip
 
 on:
   push:
@@ -8,14 +8,12 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
-
     steps:
-      # Checkout the repo
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v6
 
       # Create the release and upload only specific files
-      - name: GH Release
+      - name: Release Zip File
         uses: softprops/action-gh-release@v2.5.0
         with:
           files: |
@@ -25,5 +23,3 @@ jobs:
             internet_ping_logger.py
             readme.md
             start_internet_ping_logger.vbs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
