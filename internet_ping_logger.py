@@ -74,7 +74,7 @@ def do_ping(host) -> tuple[str, int]:
     except OSError as e:
         if e.errno in (101, 113):
             return (Status.NoRoute, 2)
-        if e.errno == errno.ENETUNREACH:  # if e.errno == 10065:
+        if e.errno == 10065:  # A socket operation was attempted to an unreachable host
             return (Status.Unreachable, 2)
         # Errors to account for should they not be handled
         return (f"E {e.errno}:{e.strerror}", 2)
