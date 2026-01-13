@@ -20,13 +20,16 @@ class Status(StrEnum):
 
     # Network errors
     Timeout = "Timeout"
+    NetUnreachable = "Net Unreachable"
+
+    # Host errors
     Refused = "Refused"
     Aborted = "Aborted"
     Reset = "Reset"
 
     # Operating system errors
     NoRoute = "No Route"
-    Unreachable = "Net Unreachable"
+    HostUnreachable = "Host Unreachable"
 
     Started = "Started Log"
     Stopped = "Stopped Log"
@@ -60,11 +63,14 @@ def log_new_status(log_file_path: str, curr_status: str, duration: int | None = 
 
 
 def do_ping(host) -> tuple[str, int]:
+    # If problem with network, return 2
+    # If problem with connection to host and network OK, return 1
+    # If no issue, return 0
     try:
         with socket.create_connection((host, 443), timeout=2):
             return (Status.Online, 0)
     except TimeoutError:
-        return (Status.Timeout, 1)
+        return (Status.Timeout, 2)
     except ConnectionRefusedError:
         return (Status.Refused, 1)
     except ConnectionAbortedError:
@@ -74,8 +80,12 @@ def do_ping(host) -> tuple[str, int]:
     except OSError as e:
         if e.errno in (101, 113):
             return (Status.NoRoute, 2)
-        if e.errno == 10065:  # A socket operation was attempted to an unreachable host
-            return (Status.Unreachable, 2)
+        if e.errno == 10065:
+            # E 10065:A socket operation was attempted to an unreachable host
+            return (Status.NetUnreachable, 2)
+        if e.errno == 10051:
+            # E 10051:A socket operation was attempted to an unreachable network
+            return (Status.HostUnreachable, 1)
         # Errors to account for should they not be handled
         return (f"E {e.errno}:{e.strerror}", 2)
 
@@ -90,6 +100,7 @@ def start_ping_loop(icon, host, ignore_seconds, halt_event, logFilePath, images)
     start = time.perf_counter()
 
     log_new_status(logFilePath, status_curr)
+    icon.icon = images[status_image_index]
 
     while True:
         if halt_event.is_set():
